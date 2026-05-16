@@ -1,12 +1,15 @@
 # ── Stage 1: build the React frontend ──────────────────────────────────────
 FROM node:20-slim AS frontend
 WORKDIR /app/frontend
-COPY frontend/package.json frontend/yarn.lock* ./
-RUN npm i -g yarn@1.22.22 && yarn install --frozen-lockfile --network-timeout 600000
+COPY frontend/package.json ./
+RUN npm install --no-audit --no-fund --legacy-peer-deps
 COPY frontend/ ./
 # The frontend talks to /api on the same origin it is served from.
-ENV REACT_APP_BACKEND_URL=""
-RUN yarn build
+# CI=false keeps ESLint warnings from failing the production build.
+ENV REACT_APP_BACKEND_URL="" \
+    GENERATE_SOURCEMAP="false" \
+    CI="false"
+RUN npm run build
 
 # ── Stage 2: Python backend + ffmpeg, also serving the built frontend ───────
 FROM python:3.12-slim AS app
