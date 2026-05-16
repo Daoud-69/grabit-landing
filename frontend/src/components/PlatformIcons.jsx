@@ -58,11 +58,16 @@ export const FacebookIcon = ({ size = 28, strokeWidth = 1.4, className = "" }) =
     fill="none"
     stroke="currentColor"
     strokeWidth={strokeWidth}
+    strokeLinecap="round"
+    strokeLinejoin="round"
     className={className}
     aria-hidden="true"
   >
+    {/* Rounded container */}
     <rect x="6" y="6" width="36" height="36" rx="10" />
-    <path d="M28 16h-3a3 3 0 0 0-3 3v5h-4m0 0h4m-4 0v14m4-14h4l1-4h-5" />
+    {/* Clean lowercase "f": vertical stem from top, hooked at the top, horizontal crossbar */}
+    <path d="M30 16h-3a4 4 0 0 0-4 4v22" />
+    <path d="M19 26h10" />
   </svg>
 );
 
@@ -74,11 +79,14 @@ export const XIcon = ({ size = 28, strokeWidth = 1.4, className = "" }) => (
     fill="none"
     stroke="currentColor"
     strokeWidth={strokeWidth}
-    strokeLinecap="square"
+    strokeLinecap="round"
+    strokeLinejoin="round"
     className={className}
     aria-hidden="true"
   >
-    <path d="M8 8 L40 40 M40 8 L8 40" />
+    {/* X (formerly Twitter) — two angular strokes forming the wordmark glyph */}
+    <path d="M10 10 L38 38" />
+    <path d="M38 10 L10 38" />
   </svg>
 );
 
