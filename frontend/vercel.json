@@ -1,4 +1,5 @@
 {
+  "installCommand": "yarn install --frozen-lockfile",
   "buildCommand": "CI=false yarn build",
   "functions": {
     "api/index.py": { "maxDuration": 60 }
