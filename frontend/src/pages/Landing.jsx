@@ -8,7 +8,7 @@ import HowItWorks from "@/components/HowItWorks";
 import Features from "@/components/Features";
 import Footer from "@/components/Footer";
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${process.env.REACT_APP_BACKEND_URL || ""}/api`;
 
 export default function Landing() {
   const [url, setUrl] = useState("");
