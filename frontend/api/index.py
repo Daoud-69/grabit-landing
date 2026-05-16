@@ -110,6 +110,17 @@ def _run_ytdlp(url: str, extra: dict, download: bool):
 
 def friendly_error(exc: Exception, platform: str):
     msg = str(exc).lower()
+    if (
+        "sign in to confirm" in msg
+        or "confirm you're not a bot" in msg
+        or "confirm you are not a bot" in msg
+        or ("bot" in msg and "youtube" in msg)
+    ):
+        return 403, (
+            "YouTube is blocking this server's IP (cloud datacenter). This "
+            "affects every cloud-hosted downloader — try another platform, "
+            "or run Grabit locally where it uses your home connection."
+        )
     if "private" in msg or "members-only" in msg or "members only" in msg:
         return 403, "This content is private or members-only."
     if "login" in msg or "log in" in msg or "cookies" in msg or "sign in" in msg:
