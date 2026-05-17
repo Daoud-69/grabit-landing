@@ -381,6 +381,7 @@ def preview(req: PreviewRequest, request: Request):
 
 
 ALLOWED_TYPES = {"mp4", "mp3", "m4a"}
+ALLOWED_CODECS = {"auto", "h264"}
 ALLOWED_MP3_BITRATE = {"320", "192", "128"}
 RES_MAP = {"2160": 2160, "1440": 1440, "1080": 1080, "720": 720, "480": 480, "360": 360}
 
@@ -463,12 +464,16 @@ def _stream_audio(url: str, fmt_type: str, quality: str) -> StreamingResponse:
     raise HTTPException(502, "Couldn't extract audio from that link.")
 
 
-def _download_video(url: str, quality: str) -> FileResponse:
+def _download_video(url: str, quality: str, force_h264: bool = False) -> FileResponse:
     height = RES_MAP.get(re.sub(r"\D", "", quality or ""), 1080)
-    fmt = (
-        f"bestvideo[height<={height}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/"
-        f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
-    )
+    if force_h264:
+        # Pick the best stream regardless of codec; ffmpeg will re-encode to H.264/AAC.
+        fmt = f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
+    else:
+        fmt = (
+            f"bestvideo[height<={height}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/"
+            f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
+        )
     last_err = "download failed"
 
     with _Slot():
@@ -481,6 +486,11 @@ def _download_video(url: str, quality: str) -> FileResponse:
             ]
             if HAS_FFMPEG:
                 args[1:1] = ["--ffmpeg-location", FFMPEG]
+                if force_h264:
+                    args += [
+                        "--postprocessor-args",
+                        "ffmpeg:-vcodec libx264 -acodec aac -movflags +faststart",
+                    ]
             try:
                 proc = subprocess.run(args, capture_output=True, text=True, timeout=600)
             except subprocess.TimeoutExpired:
@@ -510,16 +520,19 @@ def download(
     url: str = Query(...),
     type: str = Query("mp4"),
     quality: str = Query(""),
+    codec: str = Query("auto"),
 ):
     if not is_safe_url(url):
         raise HTTPException(400, "Please provide a valid public http(s) link.")
     if type not in ALLOWED_TYPES:
         raise HTTPException(400, "type must be one of: mp4, mp3, m4a")
+    if codec not in ALLOWED_CODECS:
+        raise HTTPException(400, "codec must be auto or h264")
     rate_limit(_client_ip(request), limit=8)
 
     if type in ("mp3", "m4a"):
         return _stream_audio(url, type, quality)
-    return _download_video(url, quality)
+    return _download_video(url, quality, force_h264=codec == "h264")
 
 
 @api_router.post("/status", response_model=StatusCheck)

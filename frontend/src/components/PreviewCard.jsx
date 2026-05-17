@@ -13,13 +13,20 @@ const RES_LABELS = {
   360: "360p",
 };
 
-// Kick off a download by navigating an offscreen anchor to the stream endpoint.
-function triggerDownload(originalUrl, type, quality) {
+const FORMATS = [
+  { id: "mp4-h264", label: "MP4 · H.264", sub: "iPhone safe", icon: Film,   isVideo: true  },
+  { id: "mp4",      label: "MP4 · Best",  sub: "highest quality", icon: Film,   isVideo: true  },
+  { id: "mp3",      label: "MP3",         sub: "audio",       icon: Music2, isVideo: false },
+  { id: "m4a",      label: "M4A",         sub: "audio · AAC", icon: Music2, isVideo: false },
+];
+
+function triggerDownload(originalUrl, type, quality, codec) {
   if (!originalUrl) return;
   const params = new URLSearchParams({
     url: originalUrl,
     type,
     quality: String(quality || ""),
+    codec: codec || "auto",
   });
   const a = document.createElement("a");
   a.href = `${API}/download?${params.toString()}`;
@@ -30,10 +37,10 @@ function triggerDownload(originalUrl, type, quality) {
 }
 
 export default function PreviewCard({ data, loading, error }) {
-  const [qualityOpen, setQualityOpen] = useState(false);
-  const [note, setNote] = useState(null);
+  const [selectedFormat, setSelectedFormat] = useState("mp4-h264");
+  const [qualityOpen, setQualityOpen]       = useState(false);
+  const [note, setNote]                     = useState(null);
 
-  // Auto-clear the transient status note
   useEffect(() => {
     if (!note) return;
     const t = setTimeout(() => setNote(null), 4000);
@@ -65,15 +72,13 @@ export default function PreviewCard({ data, loading, error }) {
   }
 
   if (!data) {
-    // Placeholder mock card so the section always feels alive
     return (
       <div className="glass rounded-2xl p-6 w-full" data-testid="preview-card-placeholder">
         <div className="flex gap-5 items-start">
           <div
             className="w-44 h-28 rounded-lg flex items-center justify-center font-mono text-xs text-white/30"
             style={{
-              background:
-                "linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02))",
+              background: "linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02))",
               border: "1px solid rgba(255,255,255,0.06)",
             }}
           >
@@ -95,10 +100,7 @@ export default function PreviewCard({ data, loading, error }) {
     );
   }
 
-  const meta = PLATFORM_META[data.platform] || {
-    color: "#ffffff",
-    label: data.platform || "Link",
-  };
+  const meta   = PLATFORM_META[data.platform] || { color: "#ffffff", label: data.platform || "Link" };
   const accent = meta.color;
 
   const resolutions =
@@ -107,29 +109,40 @@ export default function PreviewCard({ data, loading, error }) {
       : [1080, 720, 480, 360];
 
   const originalUrl = data.original_url;
-  const hasAudio = data.has_audio !== false;
+  const hasAudio    = data.has_audio !== false;
+  const fmt         = FORMATS.find((f) => f.id === selectedFormat) || FORMATS[0];
 
   const onPickQuality = (height) => {
     setQualityOpen(false);
-    setNote(`Preparing MP4 · ${RES_LABELS[height] || height + "p"}…`);
-    triggerDownload(originalUrl, "mp4", height);
+    const isH264 = selectedFormat === "mp4-h264";
+    setNote(`Preparing ${fmt.label} · ${RES_LABELS[height] || height + "p"}…`);
+    triggerDownload(originalUrl, "mp4", height, isH264 ? "h264" : "auto");
   };
 
-  const onExtractMp3 = () => {
+  const onDownloadAudio = () => {
     if (!hasAudio) return;
-    setNote("Extracting MP3 · 320 kbps…");
-    triggerDownload(originalUrl, "mp3", "320");
+    const type = selectedFormat; // "mp3" or "m4a"
+    setNote(`Extracting ${fmt.label}…`);
+    triggerDownload(originalUrl, type, "320", "auto");
+  };
+
+  const onFormatClick = (fmtId) => {
+    setSelectedFormat(fmtId);
+    setQualityOpen(false);
+    const f = FORMATS.find((x) => x.id === fmtId);
+    if (f && !f.isVideo) {
+      // Trigger audio download immediately on selection
+    }
   };
 
   return (
     <div
       className="glass spring-up rounded-2xl p-6 w-full relative"
       data-testid="preview-card"
-      style={{
-        boxShadow: `0 24px 80px -24px ${accent}40, inset 0 1px 0 0 ${accent}30`,
-      }}
+      style={{ boxShadow: `0 24px 80px -24px ${accent}40, inset 0 1px 0 0 ${accent}30` }}
     >
       <div className="flex flex-col md:flex-row gap-5 md:items-start">
+        {/* Thumbnail */}
         <div
           className="relative md:w-52 w-full h-32 rounded-lg overflow-hidden flex-shrink-0"
           style={{ border: `1px solid ${accent}30` }}
@@ -152,76 +165,97 @@ export default function PreviewCard({ data, loading, error }) {
           )}
           <span
             className="absolute top-2 left-2 font-mono text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full"
-            style={{
-              background: `${accent}1f`,
-              color: accent,
-              border: `1px solid ${accent}55`,
-            }}
+            style={{ background: `${accent}1f`, color: accent, border: `1px solid ${accent}55` }}
             data-testid="preview-platform-badge"
           >
             {meta.label}
           </span>
         </div>
 
+        {/* Info + controls */}
         <div className="flex-1 min-w-0">
           <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/40">
             {data.author || "unknown author"} · {data.duration || "—:—"}
           </div>
-          <p
-            className="text-[15px] font-semibold mt-1.5 text-white truncate"
-            data-testid="preview-title"
-          >
+          <p className="text-[15px] font-semibold mt-1.5 text-white truncate" data-testid="preview-title">
             {data.title || "Untitled"}
           </p>
 
-          <div className="flex flex-wrap items-center gap-2.5 mt-4 relative">
-            <div className="relative">
+          {/* Format pills */}
+          <div className="flex flex-wrap gap-1.5 mt-4">
+            {FORMATS.map((f) => {
+              const disabled = !f.isVideo && !hasAudio;
+              const active   = selectedFormat === f.id;
+              return (
+                <button
+                  key={f.id}
+                  type="button"
+                  disabled={disabled}
+                  data-testid={`format-pill-${f.id}`}
+                  onClick={() => !disabled && onFormatClick(f.id)}
+                  className="font-mono text-[11px] px-3 py-1 rounded-full transition-all"
+                  style={{
+                    background: active ? `${accent}28` : "rgba(255,255,255,0.06)",
+                    color:      active ? accent          : "rgba(255,255,255,0.55)",
+                    border:     active ? `1px solid ${accent}66` : "1px solid rgba(255,255,255,0.1)",
+                    opacity:    disabled ? 0.35 : 1,
+                    cursor:     disabled ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Action row */}
+          <div className="flex flex-wrap items-center gap-2.5 mt-3 relative">
+            {fmt.isVideo ? (
+              <div className="relative">
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  data-testid="preview-download-mp4-btn"
+                  onClick={() => setQualityOpen((v) => !v)}
+                  style={{ borderColor: `${accent}66`, background: `${accent}12` }}
+                >
+                  <Film size={14} strokeWidth={1.6} />
+                  Download {fmt.label}
+                  <ChevronDown size={13} strokeWidth={1.8} />
+                </button>
+
+                {qualityOpen && (
+                  <div
+                    className="popover-card rounded-xl absolute left-0 top-full mt-2 p-1.5 z-30 w-44"
+                    data-testid="quality-popover"
+                  >
+                    {resolutions.map((height) => (
+                      <button
+                        key={height}
+                        type="button"
+                        onClick={() => onPickQuality(height)}
+                        className="font-mono w-full text-left px-3 py-1.5 text-[12px] rounded-md hover:bg-white/10 transition-colors text-white/85"
+                        data-testid={`quality-option-${height}`}
+                      >
+                        {RES_LABELS[height] || `${height}p`}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
               <button
                 type="button"
                 className="btn-ghost"
-                data-testid="preview-download-mp4-btn"
-                onClick={() => setQualityOpen((v) => !v)}
-                style={{
-                  borderColor: `${accent}66`,
-                  background: `${accent}12`,
-                }}
+                data-testid="preview-extract-audio-btn"
+                onClick={onDownloadAudio}
+                disabled={!hasAudio}
+                style={{ opacity: hasAudio ? 1 : 0.5, borderColor: `${accent}66`, background: `${accent}12` }}
               >
-                <Film size={14} strokeWidth={1.6} />
-                Download MP4
-                <ChevronDown size={13} strokeWidth={1.8} />
+                <Music2 size={14} strokeWidth={1.6} />
+                Download {fmt.label}
               </button>
-
-              {qualityOpen && (
-                <div
-                  className="popover-card rounded-xl absolute left-0 top-full mt-2 p-1.5 z-30 w-44"
-                  data-testid="quality-popover"
-                >
-                  {resolutions.map((height) => (
-                    <button
-                      key={height}
-                      type="button"
-                      onClick={() => onPickQuality(height)}
-                      className="font-mono w-full text-left px-3 py-1.5 text-[12px] rounded-md hover:bg-white/10 transition-colors text-white/85"
-                      data-testid={`quality-option-${height}`}
-                    >
-                      {RES_LABELS[height] || `${height}p`}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <button
-              type="button"
-              className="btn-ghost"
-              data-testid="preview-extract-mp3-btn"
-              onClick={onExtractMp3}
-              disabled={!hasAudio}
-              style={{ opacity: hasAudio ? 1 : 0.5 }}
-            >
-              <Music2 size={14} strokeWidth={1.6} />
-              Extract MP3
-            </button>
+            )}
           </div>
 
           {note && (
