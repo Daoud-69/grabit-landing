@@ -12,10 +12,12 @@ When a built React app exists at ../frontend/build it is also served, so the
 whole product can run as a single process.
 """
 
+import base64
 import json
 import logging
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import tempfile
@@ -28,7 +30,7 @@ from typing import List, Optional
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.background import BackgroundTask
@@ -65,6 +67,31 @@ HAS_FFMPEG = shutil.which("ffmpeg") is not None
 
 app = FastAPI(title="Grabit API")
 api_router = APIRouter(prefix="/api")
+
+
+# ── Private access — HTTP Basic Auth (only enabled when both vars are set) ──
+GRABIT_USER = os.environ.get("GRABIT_USER")
+GRABIT_PASS = os.environ.get("GRABIT_PASS")
+
+
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    if GRABIT_USER and GRABIT_PASS:
+        header = request.headers.get("authorization", "")
+        ok = False
+        if header.startswith("Basic "):
+            try:
+                user, _, pw = base64.b64decode(header[6:]).decode("utf-8").partition(":")
+                ok = secrets.compare_digest(user, GRABIT_USER) and \
+                    secrets.compare_digest(pw, GRABIT_PASS)
+            except Exception:
+                ok = False
+        if not ok:
+            return Response(
+                status_code=401,
+                headers={"WWW-Authenticate": 'Basic realm="Grabit"'},
+            )
+    return await call_next(request)
 
 
 # ── Models ──────────────────────────────────────────────────────────────────

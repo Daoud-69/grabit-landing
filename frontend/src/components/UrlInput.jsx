@@ -1,5 +1,5 @@
 import React from "react";
-import { Link as LinkIcon } from "lucide-react";
+import { Link as LinkIcon, X } from "lucide-react";
 import { PLATFORM_META } from "@/components/PlatformIcons";
 
 /**
@@ -67,9 +67,34 @@ export default function UrlInput({
       />
 
       <div
-        className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center"
+        className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2"
         style={{ height: 40 }}
       >
+        {value && !loading && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            data-testid="url-clear-btn"
+            aria-label="Clear link"
+            title="Clear"
+            style={{
+              height: 30,
+              width: 30,
+              borderRadius: 9999,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(255,255,255,0.08)",
+              color: "rgba(255,255,255,0.7)",
+              border: "1px solid rgba(255,255,255,0.14)",
+              cursor: "pointer",
+              flexShrink: 0,
+              transition: "background 180ms ease, color 180ms ease",
+            }}
+          >
+            <X size={15} strokeWidth={2} />
+          </button>
+        )}
         <button
           type="submit"
           disabled={loading || !value}

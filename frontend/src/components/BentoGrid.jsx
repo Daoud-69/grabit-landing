@@ -32,10 +32,9 @@ export default function BentoGrid() {
       </div>
 
       <div
-        className="mt-12 grid gap-px rounded-2xl overflow-hidden"
+        className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-px rounded-2xl overflow-hidden"
         style={{
           background: "rgba(255,255,255,0.06)",
-          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
           gridAutoRows: "minmax(220px, auto)",
         }}
       >
@@ -46,10 +45,11 @@ export default function BentoGrid() {
             <div
               key={cell.key}
               data-testid={`bento-cell-${cell.key}`}
-              className="bento-cell glass reveal"
+              className={`bento-cell glass reveal col-span-1 ${
+                cell.wide ? "md:col-span-2" : ""
+              }`}
               data-reveal
               style={{
-                gridColumn: cell.wide ? "span 2 / span 2" : "span 1 / span 1",
                 padding: "32px",
                 minHeight: 220,
                 transitionDelay: `${i * 80}ms`,
