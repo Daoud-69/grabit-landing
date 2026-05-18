@@ -9,6 +9,9 @@ import Features from "@/components/Features";
 import Footer from "@/components/Footer";
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ""}/api`;
+const _AUTH = process.env.REACT_APP_GRABIT_USER
+  ? { Authorization: `Basic ${btoa(`${process.env.REACT_APP_GRABIT_USER}:${process.env.REACT_APP_GRABIT_PASS}`)}` }
+  : {};
 
 export default function Landing() {
   const [url, setUrl] = useState("");
@@ -56,7 +59,7 @@ export default function Landing() {
     setError(null);
     setPreview(null);
     try {
-      const res = await axios.post(`${API}/preview`, { url });
+      const res = await axios.post(`${API}/preview`, { url }, { headers: _AUTH });
       setPreview(res.data);
       // Smooth scroll to preview section
       setTimeout(() => {

@@ -3,6 +3,9 @@ import { ChevronDown, Music2, Film } from "lucide-react";
 import { PLATFORM_META } from "@/components/PlatformIcons";
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ""}/api`;
+const _AUTH = process.env.REACT_APP_GRABIT_USER
+  ? `Basic ${btoa(`${process.env.REACT_APP_GRABIT_USER}:${process.env.REACT_APP_GRABIT_PASS}`)}`
+  : null;
 
 const RES_LABELS = {
   2160: "2160p · 4K",
@@ -20,7 +23,7 @@ const FORMATS = [
   { id: "m4a",      label: "M4A",         sub: "audio · AAC", icon: Music2, isVideo: false },
 ];
 
-function triggerDownload(originalUrl, type, quality, codec) {
+async function triggerDownload(originalUrl, type, quality, codec) {
   if (!originalUrl) return;
   const params = new URLSearchParams({
     url: originalUrl,
@@ -28,12 +31,19 @@ function triggerDownload(originalUrl, type, quality, codec) {
     quality: String(quality || ""),
     codec: codec || "auto",
   });
+  const headers = _AUTH ? { Authorization: _AUTH } : {};
+  const res = await fetch(`${API}/download?${params.toString()}`, { headers });
+  if (!res.ok) throw new Error(`Download failed (${res.status})`);
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = `${API}/download?${params.toString()}`;
-  a.rel = "noopener";
+  a.href = blobUrl;
+  const ext = type === "mp3" ? "mp3" : type === "m4a" ? "m4a" : "mp4";
+  a.download = `grabit-${type === "mp4" || type === "mp4-h264" ? "video" : "audio"}.${ext}`;
   document.body.appendChild(a);
   a.click();
   a.remove();
+  URL.revokeObjectURL(blobUrl);
 }
 
 export default function PreviewCard({ data, loading, error }) {
@@ -116,14 +126,18 @@ export default function PreviewCard({ data, loading, error }) {
     setQualityOpen(false);
     const isH264 = selectedFormat === "mp4-h264";
     setNote(`Preparing ${fmt.label} · ${RES_LABELS[height] || height + "p"}…`);
-    triggerDownload(originalUrl, "mp4", height, isH264 ? "h264" : "auto");
+    triggerDownload(originalUrl, "mp4", height, isH264 ? "h264" : "auto")
+      .then(() => setNote(null))
+      .catch(() => setNote("Download failed — please try again."));
   };
 
   const onDownloadAudio = () => {
     if (!hasAudio) return;
-    const type = selectedFormat; // "mp3" or "m4a"
+    const type = selectedFormat;
     setNote(`Extracting ${fmt.label}…`);
-    triggerDownload(originalUrl, type, "320", "auto");
+    triggerDownload(originalUrl, type, "320", "auto")
+      .then(() => setNote(null))
+      .catch(() => setNote("Download failed — please try again."));
   };
 
   const onFormatClick = (fmtId) => {

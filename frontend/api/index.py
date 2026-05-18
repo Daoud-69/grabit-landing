@@ -11,14 +11,16 @@ backend instead — see ../Dockerfile and ../backend/server.py.
 
 import os
 import re
+import secrets
 import shutil
 import tempfile
 from typing import List, Optional
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 from yt_dlp import YoutubeDL
@@ -26,10 +28,31 @@ from yt_dlp import YoutubeDL
 app = FastAPI(title="Grabit API")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Basic Auth ───────────────────────────────────────────────────────────────
+_AUTH_USER = os.environ.get("GRABIT_USER", "")
+_AUTH_PASS = os.environ.get("GRABIT_PASS", "")
+_http_basic = HTTPBasic(auto_error=True)
+
+
+def require_auth(credentials: HTTPBasicCredentials = Depends(_http_basic)):
+    if not _AUTH_USER or not _AUTH_PASS:
+        return
+    valid = secrets.compare_digest(
+        credentials.username.encode(), _AUTH_USER.encode()
+    ) and secrets.compare_digest(
+        credentials.password.encode(), _AUTH_PASS.encode()
+    )
+    if not valid:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid credentials.",
+            headers={"WWW-Authenticate": "Basic"},
+        )
 
 # ── Platform detection ──────────────────────────────────────────────────────
 PLATFORM_PATTERNS = [
@@ -198,7 +221,7 @@ def health():
 
 
 @app.post("/api/preview", response_model=PreviewResponse)
-def preview(req: PreviewRequest):
+def preview(req: PreviewRequest, _: None = Depends(require_auth)):
     url = (req.url or "").strip()
     if not is_safe_url(url):
         raise HTTPException(400, "Please paste a valid public http(s) link.")
@@ -239,6 +262,7 @@ def download(
     url: str = Query(...),
     type: str = Query("mp4"),
     quality: str = Query(""),
+    _: None = Depends(require_auth),
 ):
     if not is_safe_url(url):
         raise HTTPException(400, "Please provide a valid public http(s) link.")

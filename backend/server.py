@@ -12,7 +12,6 @@ When a built React app exists at ../frontend/build it is also served, so the
 whole product can run as a single process.
 """
 
-import base64
 import json
 import logging
 import os
@@ -29,8 +28,9 @@ from pathlib import Path
 from typing import List, Optional
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.background import BackgroundTask
@@ -68,30 +68,35 @@ HAS_FFMPEG = shutil.which("ffmpeg") is not None
 app = FastAPI(title="Grabit API")
 api_router = APIRouter(prefix="/api")
 
+# ── Basic Auth ───────────────────────────────────────────────────────────────
+_AUTH_USER = os.environ.get("GRABIT_USER", "")
+_AUTH_PASS = os.environ.get("GRABIT_PASS", "")
+_http_basic = HTTPBasic(auto_error=True)
 
-# ── Private access — HTTP Basic Auth (only enabled when both vars are set) ──
-GRABIT_USER = os.environ.get("GRABIT_USER")
-GRABIT_PASS = os.environ.get("GRABIT_PASS")
+
+def require_auth(credentials: HTTPBasicCredentials = Depends(_http_basic)):
+    """Validates Basic Auth credentials. Skipped if GRABIT_USER/PASS are unset."""
+    if not _AUTH_USER or not _AUTH_PASS:
+        return
+    valid = secrets.compare_digest(
+        credentials.username.encode(), _AUTH_USER.encode()
+    ) and secrets.compare_digest(
+        credentials.password.encode(), _AUTH_PASS.encode()
+    )
+    if not valid:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid credentials.",
+            headers={"WWW-Authenticate": "Basic"},
+        )
 
 
-@app.middleware("http")
-async def require_login(request: Request, call_next):
-    if GRABIT_USER and GRABIT_PASS:
-        header = request.headers.get("authorization", "")
-        ok = False
-        if header.startswith("Basic "):
-            try:
-                user, _, pw = base64.b64decode(header[6:]).decode("utf-8").partition(":")
-                ok = secrets.compare_digest(user, GRABIT_USER) and \
-                    secrets.compare_digest(pw, GRABIT_PASS)
-            except Exception:
-                ok = False
-        if not ok:
-            return Response(
-                status_code=401,
-                headers={"WWW-Authenticate": 'Basic realm="Grabit"'},
-            )
-    return await call_next(request)
+# ── Proxy trust ──────────────────────────────────────────────────────────────
+# Set TRUST_PROXY=1 only when running behind a known reverse proxy (e.g. Render,
+# Railway, nginx). Without it, X-Forwarded-For is ignored so clients can't spoof
+# their IP to bypass rate limiting.
+_TRUST_PROXY = os.environ.get("TRUST_PROXY", "").lower() in ("1", "true", "yes")
+
 
 
 # ── Models ──────────────────────────────────────────────────────────────────
@@ -314,9 +319,11 @@ def rate_limit(ip: str, limit: int, window: float = 60.0):
 
 
 def _client_ip(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",")[0].strip()
+    if _TRUST_PROXY:
+        fwd = request.headers.get("x-forwarded-for")
+        if fwd:
+            # Rightmost entry is appended by our proxy — not spoofable by clients.
+            return fwd.split(",")[-1].strip()
     return request.client.host if request.client else "unknown"
 
 
@@ -346,7 +353,7 @@ def health():
 
 
 @api_router.post("/preview", response_model=PreviewResponse)
-def preview(req: PreviewRequest, request: Request):
+def preview(req: PreviewRequest, request: Request, _: None = Depends(require_auth)):
     url = (req.url or "").strip()
     if not is_safe_url(url):
         raise HTTPException(400, "Please paste a valid public http(s) link.")
@@ -521,6 +528,7 @@ def download(
     type: str = Query("mp4"),
     quality: str = Query(""),
     codec: str = Query("auto"),
+    _: None = Depends(require_auth),
 ):
     if not is_safe_url(url):
         raise HTTPException(400, "Please provide a valid public http(s) link.")
@@ -576,8 +584,8 @@ if BUILD_DIR.is_dir():
 
     @app.get("/{full_path:path}")
     async def spa(full_path: str):
-        candidate = BUILD_DIR / full_path
-        if full_path and candidate.is_file():
+        candidate = (BUILD_DIR / full_path).resolve()
+        if full_path and candidate.is_file() and candidate.is_relative_to(BUILD_DIR.resolve()):
             return FileResponse(candidate)
         return FileResponse(BUILD_DIR / "index.html")
 
