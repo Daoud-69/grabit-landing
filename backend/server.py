@@ -12,6 +12,7 @@ When a built React app exists at ../frontend/build it is also served, so the
 whole product can run as a single process.
 """
 
+import base64
 import json
 import logging
 import os
@@ -45,6 +46,21 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger("grabit")
+
+# ── Cookies (needed for Instagram, Facebook, etc.) ───────────────────────────
+_COOKIES_FILE: Optional[str] = None
+_cookies_b64 = os.environ.get("COOKIES_B64", "")
+if _cookies_b64:
+    try:
+        _tmp = tempfile.NamedTemporaryFile(
+            mode="wb", suffix=".txt", delete=False, prefix="grabit-cookies-"
+        )
+        _tmp.write(base64.b64decode(_cookies_b64))
+        _tmp.close()
+        _COOKIES_FILE = _tmp.name
+        logger.info("Cookies file loaded")
+    except Exception as exc:
+        logger.warning(f"Failed to load cookies: {exc}")
 
 # ── Optional MongoDB — only used by the legacy /status endpoints ────────────
 db = None
@@ -210,7 +226,8 @@ def fetch_info(url: str) -> dict:
     for extra in _youtube_attempts(url):
         args = [
             YTDLP, "--dump-single-json", "--no-warnings", "--no-playlist",
-            "--socket-timeout", "20", *extra, url,
+            "--socket-timeout", "20", *extra,
+            *( ["--cookies", _COOKIES_FILE] if _COOKIES_FILE else [] ), url,
         ]
         try:
             proc = subprocess.run(args, capture_output=True, text=True, timeout=60)
@@ -400,7 +417,8 @@ def _open_audio_pipeline(url: str, extra: List[str], fmt_type: str, bitrate: str
     source produced nothing — which lets the caller retry another client."""
     yt_args = [
         YTDLP, "--no-warnings", "--no-playlist", "--socket-timeout", "20",
-        *extra, "-f", "bestaudio/best", "-o", "-", url,
+        *extra, *( ["--cookies", _COOKIES_FILE] if _COOKIES_FILE else [] ),
+        "-f", "bestaudio/best", "-o", "-", url,
     ]
     try:
         yt = subprocess.Popen(yt_args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
@@ -489,7 +507,8 @@ def _download_video(url: str, quality: str, force_h264: bool = False) -> FileRes
             out = os.path.join(tmpdir, "video.mp4")
             args = [
                 YTDLP, "--no-warnings", "--no-playlist", "--socket-timeout", "20",
-                *extra, "-f", fmt, "--merge-output-format", "mp4", "-o", out, url,
+                *extra, *( ["--cookies", _COOKIES_FILE] if _COOKIES_FILE else [] ),
+                "-f", fmt, "--merge-output-format", "mp4", "-o", out, url,
             ]
             if HAS_FFMPEG:
                 args[1:1] = ["--ffmpeg-location", FFMPEG]

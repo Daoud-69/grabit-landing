@@ -9,6 +9,7 @@ For unrestricted downloads (any quality, MP3, long videos) run the Docker
 backend instead — see ../Dockerfile and ../backend/server.py.
 """
 
+import base64
 import os
 import re
 import secrets
@@ -24,6 +25,20 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 from yt_dlp import YoutubeDL
+
+# ── Cookies (needed for Instagram, Facebook, etc.) ───────────────────────────
+_COOKIES_FILE: Optional[str] = None
+_cookies_b64 = os.environ.get("COOKIES_B64", "")
+if _cookies_b64:
+    try:
+        _tmp = tempfile.NamedTemporaryFile(
+            mode="wb", suffix=".txt", delete=False, prefix="grabit-cookies-"
+        )
+        _tmp.write(base64.b64decode(_cookies_b64))
+        _tmp.close()
+        _COOKIES_FILE = _tmp.name
+    except Exception:
+        pass
 
 app = FastAPI(title="Grabit API")
 app.add_middleware(
@@ -120,6 +135,8 @@ def _run_ytdlp(url: str, extra: dict, download: bool):
             "socket_timeout": 20,
             "cachedir": False,
         }
+        if _COOKIES_FILE:
+            opts["cookiefile"] = _COOKIES_FILE
         if extractor_args:
             opts["extractor_args"] = extractor_args
         opts.update(extra)
