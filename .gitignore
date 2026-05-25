@@ -4,6 +4,12 @@
 .idea/
 .vscode/
 
+# Cookie files — contain live session tokens, NEVER commit
+cookies.txt
+backend/cookies.txt
+*_cookies.txt
+*.cookies.txt
+
 # Dependencies
 node_modules/
 /node_modules

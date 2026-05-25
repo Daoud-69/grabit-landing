@@ -2,10 +2,7 @@
   "installCommand": "yarn install --frozen-lockfile",
   "buildCommand": "CI=false yarn build",
   "outputDirectory": "build",
-  "functions": {
-    "api/index.py": { "maxDuration": 60 }
-  },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" }
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
